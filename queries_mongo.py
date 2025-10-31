@@ -24,7 +24,7 @@ pipeline = [
             "$filter": {
                 "input": "$polizas",
                 "as": "p",
-                "cond": {"$eq": ["$$p.estado", "Activa"]}  # estado = "Activa"
+                "cond": {"$eq": ["$$p.estado", "Activa"]} 
             }
         }
     }}
@@ -77,10 +77,8 @@ pd.DataFrame(q4).to_csv(f"{RESULTS_DIR}/query04_clientes_sin_polizas_activas.csv
 # ---------------------------
 
 pipeline = [
-    # Only active agents
     {"$match": {"activo": True}},
     
-    # Lookup clientes to count only active polizas assigned to this agent
     {"$lookup": {
         "from": "clientes",
         "let": {"agente_id": "$id_agente"},
@@ -104,12 +102,10 @@ pipeline = [
         "as": "clientes_polizas"
     }},
     
-    # Sum polizas per agent
     {"$addFields": {
         "cantidad_polizas": {"$sum": "$clientes_polizas.num_polizas"}
     }},
     
-    # Project final fields
     {"$project": {
         "_id": 0,
         "nombre": {"$concat": ["$nombre", " ", "$apellido"]},
@@ -156,7 +152,6 @@ pipeline = [
             "nombre": 1,
             "_id": 0,
             "apellido": 1,
-            # extrae de cada poliza la cobertura disponible (prefiere cobertura_total, si no existe usa cobertura, si no existe 0)
             "total_cobertura": {
                 "$sum": {
                     "$map": {
@@ -174,7 +169,6 @@ pipeline = [
             
         }
     },
-    # opcional: eliminar clientes cuya suma sea 0
     {"$match": {"total_cobertura": {"$gt": 0}}},
     {"$sort": {"total_cobertura": -1}},
     {"$limit": 10}
