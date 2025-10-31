@@ -22,21 +22,7 @@ def safe_polizas(r):
     polizas_list = getattr(r, "polizas", []) or []
     return [p for p in polizas_list if isinstance(p, dict)]
 
-# ---------------------------
-# Query 5: Agentes activos con cantidad de pólizas
-# ---------------------------
-rows = session.execute("SELECT id_agente, nombre, apellido FROM agentes WHERE activo='true' ALLOW FILTERING")
-result = []
-for r in rows:
-    # Count polizas in clients (Cassandra map field) safely
-    count_cobertura = session.execute(
-        "SELECT COUNT(*) FROM clientes WHERE polizas CONTAINS KEY %s ALLOW FILTERING", (r.id_agente,)
-    )
-    result.append({
-        "nombre": f"{r.nombre} {r.apellido}",
-        "cantidad_polizas": list(count_cobertura)[0].count
-    })
-pd.DataFrame(result).to_csv(os.path.join(RESULTS_DIR, "query05_agentes_activos_polizas.csv"), index=False)
+
 
 # ---------------------------
 # Query 8: Siniestros tipo “Accidente” del último año
