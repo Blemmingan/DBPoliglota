@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Docker
+*.log
+data/
+mongo-data/
+neo4j-data/
+cassandra-data/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
