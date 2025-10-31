@@ -125,27 +125,63 @@ pd.DataFrame(q5).to_csv(
 
 # --- Query 6: Pólizas vencidas con nombre del cliente ---
 pipeline = [
-    {"$project": {
-        "nombre": 1,
-        "apellido": 1,
-        "polizas_vencidas": {"$filter": {"input": "$polizas", "as": "p", "cond": {"$lt": ["$$p.fecha_fin", today]}}}
-    }},
-    {"$match": {"polizas_vencidas": {"$ne": []}}}
+    {
+        "$project": {
+            "nombre": 1,
+            "apellido": 1,
+            "polizas_vencidas": {
+                "$filter": {
+                    "input": "$polizas",
+                    "as": "p",
+                    "cond": {"$eq": ["$$p.estado", "Vencida"]}
+                }
+            }
+        }
+    },
+    {
+        "$match": {
+            "polizas_vencidas": {"$ne": []}
+        }
+    }
 ]
+
 q6 = list(clientes.aggregate(pipeline))
 pd.DataFrame(q6).to_csv(f"{RESULTS_DIR}/query06_polizas_vencidas.csv", index=False)
 
+
 # --- Query 7: Top 10 clientes por cobertura total ---
 pipeline = [
-    {"$project": {
-        "nombre": 1,
-        "apellido": 1,
-        "total_cobertura": {"$sum": "$polizas.cobertura"}
-    }},
+    {
+        "$project": {
+            "nombre": 1,
+            "_id": 0,
+            "apellido": 1,
+            # extrae de cada poliza la cobertura disponible (prefiere cobertura_total, si no existe usa cobertura, si no existe 0)
+            "total_cobertura": {
+                "$sum": {
+                    "$map": {
+                        "input": {"$ifNull": ["$polizas", []]},
+                        "as": "p",
+                        "in": {
+                            "$ifNull": [
+                                "$$p.cobertura_total",
+                                {"$ifNull": ["$$p.cobertura", 0]}
+                            ]
+                        }
+                    }
+                }
+            },
+            
+        }
+    },
+    # opcional: eliminar clientes cuya suma sea 0
+    {"$match": {"total_cobertura": {"$gt": 0}}},
     {"$sort": {"total_cobertura": -1}},
     {"$limit": 10}
 ]
+
 q7 = list(clientes.aggregate(pipeline))
 pd.DataFrame(q7).to_csv(f"{RESULTS_DIR}/query07_top10_clientes_cobertura.csv", index=False)
+
 
 print("✅ Mongo queries completed and CSVs generated in 'results/'")
