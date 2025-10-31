@@ -1,44 +1,146 @@
 import pandas as pd
 from pymongo import MongoClient
 from cassandra.cluster import Cluster
+from cassandra.query import SimpleStatement
 
 # === MongoDB ===
 mongo_client = MongoClient("mongodb://localhost:27017/")
+mongo_client.drop_database("poliglota_db")  # Wipe clean
 mongo_db = mongo_client["poliglota_db"]
 
 # === Cassandra ===
 cluster = Cluster(["127.0.0.1"])
 session = cluster.connect()
-session.execute("CREATE KEYSPACE IF NOT EXISTS poliglota_db WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
+# Drop keyspace if exists to guarantee clean slate
+session.execute("DROP KEYSPACE IF EXISTS poliglota_db")
+session.execute("""
+    CREATE KEYSPACE poliglota_db 
+    WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}
+""")
 session.set_keyspace("poliglota_db")
 
-def import_to_mongo(filename, collection_name):
-    df = pd.read_csv(filename)
-    records = df.to_dict(orient="records")
-    mongo_db[collection_name].insert_many(records)
-    print(f"✅ Imported {len(records)} records into Mongo collection '{collection_name}'")
+# === Load CSVs ===
+agentes_df = pd.read_csv("data/agentes.csv")
+clientes_df = pd.read_csv("data/clientes.csv")
+polizas_df = pd.read_csv("data/polizas.csv")
+siniestros_df = pd.read_csv("data/siniestros.csv")
+vehiculos_df = pd.read_csv("data/vehiculos.csv")
 
-def import_to_cassandra(filename, table_name):
-    df = pd.read_csv(filename)
-    cols = df.columns
-    col_defs = ", ".join([f"{col} text" for col in cols])
-    pk = cols[0]  # first column as primary key (adjust if needed)
+# === MONGO MODEL (with vehicles) ===
+clientes_docs = []
+for _, cliente in clientes_df.iterrows():
+    cliente_id = cliente["id_cliente"]
 
-    session.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({col_defs}, PRIMARY KEY ({pk}))")
+    # Embed policies
+    cliente_polizas = polizas_df[polizas_df["id_cliente"] == cliente_id].to_dict(orient="records")
+    # Attach siniestros to each poliza
+    for poliza in cliente_polizas:
+        nro_poliza = poliza["nro_poliza"]
+        poliza_siniestros = siniestros_df[siniestros_df["nro_poliza"] == nro_poliza].to_dict(orient="records")
+        poliza["siniestros"] = poliza_siniestros
 
+    # Embed vehicles
+    cliente_vehiculos = vehiculos_df[vehiculos_df["id_cliente"] == cliente_id].to_dict(orient="records")
+
+    cliente_doc = cliente.to_dict()
+    cliente_doc["polizas"] = cliente_polizas
+    cliente_doc["vehiculos"] = cliente_vehiculos
+    clientes_docs.append(cliente_doc)
+
+mongo_db["clientes"].insert_many(clientes_docs)
+mongo_db["agentes"].insert_many(agentes_df.to_dict(orient="records"))
+print(f"✅ Imported {len(clientes_docs)} clientes with embedded polizas+siniestros+vehiculos and {len(agentes_df)} agentes into MongoDB")
+
+# === CASSANDRA MODEL ===
+# Agents table (flat)
+session.execute("""
+    CREATE TABLE agentes (
+        id_agente text PRIMARY KEY,
+        nombre text,
+        apellido text,
+        matricula text,
+        telefono text,
+        email text,
+        zona text,
+        activo text
+    )
+""")
+
+# Clients table with embedded policies + vehicles
+session.execute("""
+    CREATE TABLE clientes (
+        id_cliente text PRIMARY KEY,
+        nombre text,
+        apellido text,
+        dni text,
+        email text,
+        telefono text,
+        direccion text,
+        ciudad text,
+        provincia text,
+        activo text,
+        polizas list<frozen<map<text,text>>>,
+        vehiculos list<frozen<map<text,text>>>
+    )
+""")
+
+# Helper to embed policies + siniestros
+def embed_polizas_cassandra(cliente_id):
+    cliente_polizas = polizas_df[polizas_df["id_cliente"] == cliente_id].to_dict(orient="records")
+    embedded_polizas = []
+    for poliza in cliente_polizas:
+        nro_poliza = poliza["nro_poliza"]
+        poliza_siniestros = siniestros_df[siniestros_df["nro_poliza"] == nro_poliza].to_dict(orient="records")
+        poliza_copy = poliza.copy()
+        for i, s in enumerate(poliza_siniestros):
+            for k, v in s.items():
+                poliza_copy[f"siniestro_{i}_{k}"] = str(v)
+        embedded_polizas.append({k: str(v) for k, v in poliza_copy.items()})
+    return embedded_polizas
+
+# Helper to embed vehicles
+def embed_vehiculos_cassandra(cliente_id):
+    cliente_vehiculos = vehiculos_df[vehiculos_df["id_cliente"] == cliente_id].to_dict(orient="records")
+    embedded_vehiculos = []
+    for veh in cliente_vehiculos:
+        embedded_vehiculos.append({k: str(v) for k, v in veh.items()})
+    return embedded_vehiculos
+
+# Insert agentes
+def insert_df(df, table):
+    cols = ", ".join(df.columns)
+    placeholders = ", ".join(["%s"] * len(df.columns))
+    query = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
+    prepared = SimpleStatement(query)
     for _, row in df.iterrows():
-        values = tuple(str(x) for x in row)
-        placeholders = ", ".join(["%s"] * len(cols))
-        session.execute(f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})", values)
+        session.execute(prepared, tuple(str(x) for x in row))
+    print(f"✅ Imported {len(df)} records into Cassandra table '{table}'")
 
-    print(f"✅ Imported {len(df)} records into Cassandra table '{table_name}'")
+insert_df(agentes_df, "agentes")
 
-# === MAIN ===
-datasets = ["agentes", "clientes", "polizas", "siniestros", "vehiculos"]
+# Insert clientes with embedded policies + vehicles
+cols = "id_cliente, nombre, apellido, dni, email, telefono, direccion, ciudad, provincia, activo, polizas, vehiculos"
+query = f"INSERT INTO clientes ({cols}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+prepared = SimpleStatement(query)
 
-for name in datasets:
-    path = f"data/{name}.csv"
-    import_to_mongo(path, name)
-    import_to_cassandra(path, name)
+for _, cliente in clientes_df.iterrows():
+    polizas_embedded = embed_polizas_cassandra(cliente["id_cliente"])
+    vehiculos_embedded = embed_vehiculos_cassandra(cliente["id_cliente"])
+    values = (
+        str(cliente["id_cliente"]),
+        str(cliente["nombre"]),
+        str(cliente["apellido"]),
+        str(cliente["dni"]),
+        str(cliente["email"]),
+        str(cliente["telefono"]),
+        str(cliente["direccion"]),
+        str(cliente["ciudad"]),
+        str(cliente["provincia"]),
+        str(cliente["activo"]),
+        polizas_embedded,
+        vehiculos_embedded
+    )
+    session.execute(prepared, values)
 
-print("🎉 All data imported successfully!")
+print(f"✅ Imported {len(clientes_df)} clientes with embedded polizas+siniestros+vehiculos into Cassandra")
+print("🎉 All data imported successfully into MongoDB and Cassandra!")

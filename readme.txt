@@ -60,7 +60,7 @@ Once the environment is set up and containers are running:
 1. Place your CSV files in the appropriate directory (e.g. `data/`).
 2. Run your Python upload script from inside the virtual environment:
 
-   (venv) python scripts/upload_data.py
+   (venv) python import_data.py
 
 *(Assuming your upload script is stored under `scripts/` — adjust as needed.)*
 
@@ -74,4 +74,3 @@ sudo docker-compose down
 
 ---
 
-Would you like me to also include a **section for environment cleanup** (removing volumes, clearing Docker data, etc.)? It’s optional but helpful for a clean reset.
