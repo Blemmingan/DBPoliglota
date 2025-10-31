@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: cassandra
+    restart: unless-stopped
+    environment:
+      - CASSANDRA_START_RPC=true
+    ports:
+      - "9042:9042"  # CQL driver port
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+
+volumes:
+  mongo-data:
+  cassandra-data:
+
