@@ -288,7 +288,6 @@ def insert_cliente(cliente):
         fieldnames=csv_fields
     )
 
-    print(f"✅ Cliente {cliente['id_cliente']} insertado y exportado.")
 
 
 def insert_poliza(cliente_id, poliza_data):
@@ -356,7 +355,6 @@ def insert_poliza(cliente_id, poliza_data):
                     "prima_mensual","cobertura_total","id_agente","estado"]
     )
 
-    print(f"✅ Póliza agregada y exportada para cliente {cliente_id} (agente {agente_id}).")
 
 
 
@@ -427,8 +425,6 @@ def insert_siniestro(cliente_id, poliza_idx, siniestro_data):
         fieldnames=["id_siniestro", "nro_poliza", "fecha", "tipo",
                     "monto_estimado", "descripcion", "estado"]
     )
-
-    print(f"✅ Siniestro agregado y exportado para cliente {cliente_id}, poliza {poliza_idx}.")
 
 
 
