@@ -5,7 +5,6 @@ __pycache__/
 
 # Docker
 *.log
-data/
 mongo-data/
 neo4j-data/
 cassandra-data/
