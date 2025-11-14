@@ -16,7 +16,7 @@ session = cluster.connect("poliglota_db")
 mongo_client = MongoClient("mongodb://localhost:27017/")
 mongo_db = mongo_client["poliglota_db"]
 
-# --- Helper functions ---
+# --- Helper functions ----
 def safe_polizas(r):
     """Return list of dict polizas, skip non-dict items."""
     polizas_list = getattr(r, "polizas", []) or []
