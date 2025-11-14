@@ -1,3 +1,4 @@
+#TPO - Bases de Datos II
 
 Para ejecutar las 15 queries:
    1. Correr el archivo run.sh desde la raiz del proyecto.
